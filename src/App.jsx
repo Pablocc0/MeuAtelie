@@ -38,21 +38,36 @@ function compressPhoto(file, maxSize = 900) {
 }
 
 function quoteMessage(quote, profile) {
-  const greeting = quote.client ? `Olá, ${quote.client}!` : 'Olá!'
-  const lines = [
-    greeting,
-    '',
-    `Segue o orçamento de ${profile.studio || 'Meu Ateliê'}:`,
-    `• ${quote.title}${Number(quote.quantity || 1) > 1 ? ` (${quote.quantity} unidades)` : ''}`,
-    `• Valor total: ${money(quote.value)}`,
-    quote.deliveryDate ? `• Entrega prevista: ${dateBR(quote.deliveryDate)}` : '',
-    quote.validUntil ? `• Orçamento válido até: ${dateBR(quote.validUntil)}` : '',
-    quote.paymentTerms ? `• Pagamento: ${quote.paymentTerms}` : '',
-    profile.pixKey ? `• PIX: ${profile.pixKey}` : '',
-    '',
-    quote.notes || '',
-  ]
-  return lines.filter((line, index) => line || lines[index - 1]).join('\n').trim()
+  const studio = profile.studio || 'Meu Ateliê'
+  const brand = studio.split(/\s+/)[0] || studio
+  const quantity = Math.max(1, Number(quote.quantity || 1))
+  const total = Number(quote.value || 0)
+  const unitValue = total / quantity
+  const payment = quote.paymentTerms || profile.paymentOptions || 'PIX, espécie, débito ou crédito.'
+  const cardNote = profile.cardPaymentNote || 'Cartão com acréscimo da máquina.'
+  const productionTime = quote.productionTime || (quote.deliveryDate ? `até ${dateBR(quote.deliveryDate)}` : 'A combinar')
+  const shippingTime = quote.shippingTime || 'A combinar'
+  const deliveryMessage = profile.deliveryMessage || 'Retirada ou entrega a combinar. Em caso de entrega, temos uma taxa única de R$ 8,00 para a cidade de Caxias.'
+  const details = [
+    `• Produto(s): ${quote.title}`,
+    `• Quantidade: ${quantity}`,
+    `• Valor: ${money(unitValue)} cada, total 🟰 ${money(total)}`,
+    `• Forma de pagamento: ${payment}`,
+    `Obs.: ${cardNote}`,
+    `• Prazo de produção: ${productionTime}`,
+    `• Prazo de envio: ${shippingTime}`,
+    profile.pixKey ? `• Chave PIX: ${profile.pixKey}` : '',
+    quote.notes ? `• Observações: ${quote.notes}` : '',
+  ].filter(Boolean).join('\n')
+  const nextSteps = ['Assim que seu pedido estiver finalizado, você receberá:', '• Uma foto da peça pronta', `• ${deliveryMessage}`].join('\n')
+  return [
+    `🌿 Confirmação de Pedido – ${studio}.`,
+    `Olá, ${quote.client || 'cliente'}✨\nRecebemos seu pedido com muito carinho e ele será preparado com todo o cuidado artesanal do ${studio}.`,
+    `🧾 Detalhes do Pedido\n${details}`,
+    `🎨 Um toque especial ${brand}\n\nCada peça ${brand} é pintada à mão — única, afetiva e feita para durar. Por isso, seguimos um processo cuidadoso para garantir que você receba algo tão especial quanto imaginou.`,
+    `📦 Próximos passos\n\n${nextSteps}`,
+    `Qualquer dúvida, estou à disposição!\nObrigada por escolher o ${brand} — onde cada detalhe importa. 🌿✨`,
+  ].join('\n\n')
 }
 
 function whatsAppUrl(quote, data) {
@@ -102,6 +117,9 @@ async function generateQuotePdf(quote, profile) {
   }
   label('Cliente', quote.client, 20)
   label('Validade', dateBR(quote.validUntil), 111)
+  y += 20
+  label('Prazo de produção', quote.productionTime || 'A combinar', 20)
+  label('Prazo de envio', quote.shippingTime || 'A combinar', 111)
   y += 20
   label('Prazo de entrega', quote.deliveryDate ? dateBR(quote.deliveryDate) : 'A combinar', 20)
   label('Forma de pagamento', quote.paymentTerms || 'A combinar', 111)
@@ -206,14 +224,14 @@ async function shareOrderCalendar(order, client, profile) {
 }
 
 const initialData = {
-  profile: { name: '', studio: 'Meu Ateliê', businessPhone: '', pixKey: '', dark: false, onboarded: false },
+  profile: { name: '', studio: 'Meu Ateliê', businessPhone: '', pixKey: '', paymentOptions: 'PIX, espécie, débito ou crédito.', cardPaymentNote: 'Cartão com acréscimo da máquina.', deliveryMessage: 'Retirada ou entrega a combinar. Em caso de entrega, temos uma taxa única de R$ 8,00 para a cidade de Caxias.', dark: false, onboarded: false },
   clients: [], orders: [], materials: [], expenses: [], catalog: [], quotes: [],
 }
 
 function readData() {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) {
     return {
-      profile: { name: 'Pablo', studio: 'Meu Ateliê', businessPhone: '(85) 99999-9999', pixKey: 'contato@meuatelie.com', dark: false, onboarded: true },
+      profile: { ...initialData.profile, name: 'Pablo', studio: 'Meu Ateliê', businessPhone: '(85) 99999-9999', pixKey: 'contato@meuatelie.com', onboarded: true },
       clients: [{ id: 'demo-client', name: 'Rebeca Dias', phone: '(85) 99999-1234', instagram: '@rebeca', notes: '' }],
       orders: [{ id: 'demo-order', title: 'Kit banheiro', clientId: 'demo-client', date: today(), value: 150, status: 'confirmed', payment: 'deposit', payments: [{ id: 'demo-payment', value: 75, date: today(), method: 'pix', notes: 'Sinal do pedido' }], notes: '' }],
       materials: [{ id: 'demo-material', name: 'Barbante cru', quantity: 2, minimum: 3, unit: 'un.', cost: 17.8, packageWeight: 600 }],
@@ -736,7 +754,7 @@ function SettingsScreen({ data, setData, saveProfile, notify }) {
   }
   const importData = (event) => {
     const file = event.target.files?.[0]; if (!file) return
-    const reader = new FileReader(); reader.onload = () => { try { setData({ ...initialData, ...JSON.parse(reader.result) }); notify('Backup restaurado') } catch { notify('Arquivo inválido') } }; reader.readAsText(file)
+    const reader = new FileReader(); reader.onload = () => { try { const restored = JSON.parse(reader.result); setData({ ...initialData, ...restored, profile: { ...initialData.profile, ...restored.profile } }); notify('Backup restaurado') } catch { notify('Arquivo inválido') } }; reader.readAsText(file)
   }
   const pickProfilePhoto = async (event) => {
     const file = event.target.files?.[0]
@@ -751,7 +769,7 @@ function SettingsScreen({ data, setData, saveProfile, notify }) {
   return <>
     <PageIntro eyebrow="PREFERÊNCIAS" title="Configurações" />
     <div className="settings-group"><h3>Meu perfil</h3><div className="profile-photo-setting"><button className="profile-photo" onClick={() => photoRef.current.click()}><span className="profile-photo-frame">{data.profile.photo ? <img src={data.profile.photo} alt="Foto de perfil" /> : <b>{data.profile.name?.[0]?.toUpperCase() || <UserRound />}</b>}</span><i><Camera /></i></button><div><b>{data.profile.photo ? 'Trocar foto' : 'Adicionar foto'}</b><small>Toque na imagem para escolher da galeria</small>{data.profile.photo && <button onClick={() => { saveProfile({ photo: '' }); notify('Foto removida') }}>Remover foto</button>}</div><input ref={photoRef} hidden type="file" accept="image/*" onChange={pickProfilePhoto} /></div><label><span>Seu nome</span><input value={data.profile.name} onChange={(e) => saveProfile({ name: e.target.value })} /></label><label><span>Nome do ateliê</span><input value={data.profile.studio} onChange={(e) => saveProfile({ studio: e.target.value })} /></label></div>
-    <div className="settings-group"><h3>Dados dos orçamentos</h3><label><span>WhatsApp do ateliê</span><input type="tel" value={data.profile.businessPhone || ''} onChange={(e) => saveProfile({ businessPhone: e.target.value })} placeholder="(85) 99999-9999" /></label><label><span>Chave PIX</span><input value={data.profile.pixKey || ''} onChange={(e) => saveProfile({ pixKey: e.target.value })} placeholder="CPF, telefone, e-mail ou chave aleatória" /></label></div>
+    <div className="settings-group"><h3>Dados dos orçamentos</h3><label><span>WhatsApp do ateliê</span><input type="tel" value={data.profile.businessPhone || ''} onChange={(e) => saveProfile({ businessPhone: e.target.value })} placeholder="(85) 99999-9999" /></label><label><span>Chave PIX</span><input value={data.profile.pixKey || ''} onChange={(e) => saveProfile({ pixKey: e.target.value })} placeholder="CPF, telefone, e-mail ou chave aleatória" /></label><label><span>Formas de pagamento</span><input value={data.profile.paymentOptions || ''} onChange={(e) => saveProfile({ paymentOptions: e.target.value })} placeholder="PIX, espécie, débito ou crédito" /></label><label><span>Observação sobre cartão</span><input value={data.profile.cardPaymentNote || ''} onChange={(e) => saveProfile({ cardPaymentNote: e.target.value })} placeholder="Cartão com acréscimo da máquina" /></label><label><span>Retirada ou entrega</span><input value={data.profile.deliveryMessage || ''} onChange={(e) => saveProfile({ deliveryMessage: e.target.value })} placeholder="Retirada ou entrega a combinar" /></label></div>
     <div className="settings-group"><h3>Aparência</h3><button className="settings-row" onClick={() => saveProfile({ dark: !data.profile.dark })}>{data.profile.dark ? <Moon /> : <Sun />}<span><b>Modo escuro</b><small>Mais confortável à noite</small></span><i className={data.profile.dark ? 'toggle on' : 'toggle'} /></button></div>
     <div className="settings-group"><h3>Instalar no iPhone</h3><div className="install-note"><Share2 /><p>No Safari, toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p></div></div>
     <div className="settings-group"><h3>Backup local</h3><button className="settings-row" onClick={exportData}><Download /><span><b>Exportar dados</b><small>Salvar uma cópia em JSON</small></span><ChevronRight /></button><button className="settings-row" onClick={() => fileRef.current.click()}><Upload /><span><b>Restaurar backup</b><small>Importar uma cópia anterior</small></span><ChevronRight /></button><input ref={fileRef} hidden type="file" accept="application/json" onChange={importData} /></div>
@@ -1087,7 +1105,7 @@ function QuoteForm({ data, update, setData, setModal, navigate, notify, item, su
     notify('Orçamento convertido em pedido')
   }
   const validDate = new Date(); validDate.setDate(validDate.getDate() + 7)
-  return <form onSubmit={save}><ModalTitle icon="📋" title={item ? 'Editar orçamento' : 'Novo orçamento'} sub="Crie uma proposta clara para sua cliente." /><Field label="Peça ou serviço" name="title" defaultValue={item?.title} placeholder="Ex.: Bolsa personalizada" required /><Field label="Cliente" name="client" defaultValue={item?.client} placeholder="Nome da cliente" /><div className="form-row"><Field label="Quantidade" name="quantity" type="number" min="1" step="1" defaultValue={item?.quantity || 1} required /><Field label="Valor total" name="value" type="number" min="0" step="0.01" prefix="R$" defaultValue={item?.value || (suggestion ? suggestion.toFixed(2) : '')} required /></div><div className="form-row"><Field label="Válido até" name="validUntil" type="date" defaultValue={item?.validUntil || validDate.toISOString().slice(0, 10)} /><Field label="Prazo de entrega" name="deliveryDate" type="date" defaultValue={item?.deliveryDate || ''} /></div><Field label="Condições de pagamento" name="paymentTerms" defaultValue={item?.paymentTerms} placeholder="Ex.: 50% de sinal e 50% na entrega" /><Field as="textarea" label="Detalhes" name="notes" defaultValue={item?.notes} placeholder="Itens inclusos, cores, medidas e condições..." />{item && <div className="quote-document-actions"><button type="button" onClick={exportPdf} disabled={generatingPdf}><FileText /><span>{generatingPdf ? 'Gerando...' : 'PDF'}</span></button><button type="button" onClick={openWhatsApp}><Share2 /><span>WhatsApp</span></button></div>}<label className="check-field"><input type="checkbox" name="approved" defaultChecked={item?.approved} /><span><Check /> Orçamento aprovado</span></label>{item?.orderId ? <div className="quote-converted"><Check />Este orçamento já virou um pedido.</div> : item?.approved && <button className="primary quote-convert" type="button" onClick={convertToOrder}><Package />Criar pedido deste orçamento</button>}<FormActions editing={!!item} onDelete={remove} /></form>
+  return <form onSubmit={save}><ModalTitle icon="📋" title={item ? 'Editar orçamento' : 'Novo orçamento'} sub="Crie uma proposta clara para sua cliente." /><Field label="Peça ou serviço" name="title" defaultValue={item?.title} placeholder="Ex.: Bolsa personalizada" required /><Field label="Cliente" name="client" defaultValue={item?.client} placeholder="Nome da cliente" /><div className="form-row"><Field label="Quantidade" name="quantity" type="number" min="1" step="1" defaultValue={item?.quantity || 1} required /><Field label="Valor total" name="value" type="number" min="0" step="0.01" prefix="R$" defaultValue={item?.value || (suggestion ? suggestion.toFixed(2) : '')} required /></div><div className="form-row"><Field label="Válido até" name="validUntil" type="date" defaultValue={item?.validUntil || validDate.toISOString().slice(0, 10)} /><Field label="Prazo de entrega" name="deliveryDate" type="date" defaultValue={item?.deliveryDate || ''} /></div><div className="form-row"><Field label="Prazo de produção" name="productionTime" defaultValue={item?.productionTime} placeholder="Ex.: 2 dias" /><Field label="Prazo de envio" name="shippingTime" defaultValue={item?.shippingTime} placeholder="Ex.: 1 dia após conclusão" /></div><Field label="Condições de pagamento" name="paymentTerms" defaultValue={item?.paymentTerms} placeholder="Ex.: 50% de sinal e 50% na entrega" /><Field as="textarea" label="Detalhes" name="notes" defaultValue={item?.notes} placeholder="Itens inclusos, cores, medidas e condições..." />{item && <div className="quote-document-actions"><button type="button" onClick={exportPdf} disabled={generatingPdf}><FileText /><span>{generatingPdf ? 'Gerando...' : 'PDF'}</span></button><button type="button" onClick={openWhatsApp}><Share2 /><span>WhatsApp</span></button></div>}<label className="check-field"><input type="checkbox" name="approved" defaultChecked={item?.approved} /><span><Check /> Orçamento aprovado</span></label>{item?.orderId ? <div className="quote-converted"><Check />Este orçamento já virou um pedido.</div> : item?.approved && <button className="primary quote-convert" type="button" onClick={convertToOrder}><Package />Criar pedido deste orçamento</button>}<FormActions editing={!!item} onDelete={remove} /></form>
 }
 
 export default App
