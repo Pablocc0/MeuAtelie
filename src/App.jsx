@@ -453,7 +453,7 @@ function SettingsScreen({ data, setData, saveProfile, notify }) {
     <div className="settings-group"><h3>Aparência</h3><button className="settings-row" onClick={() => saveProfile({ dark: !data.profile.dark })}>{data.profile.dark ? <Moon /> : <Sun />}<span><b>Modo escuro</b><small>Mais confortável à noite</small></span><i className={data.profile.dark ? 'toggle on' : 'toggle'} /></button></div>
     <div className="settings-group"><h3>Instalar no iPhone</h3><div className="install-note"><Share2 /><p>No Safari, toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p></div></div>
     <div className="settings-group"><h3>Backup local</h3><button className="settings-row" onClick={exportData}><Download /><span><b>Exportar dados</b><small>Salvar uma cópia em JSON</small></span><ChevronRight /></button><button className="settings-row" onClick={() => fileRef.current.click()}><Upload /><span><b>Restaurar backup</b><small>Importar uma cópia anterior</small></span><ChevronRight /></button><input ref={fileRef} hidden type="file" accept="application/json" onChange={importData} /></div>
-    <button className="danger" onClick={reset}><Trash2 />Apagar todos os dados</button><p className="version">Meu Ateliê · PWA local v1.0</p>
+    <button className="danger" onClick={reset}><Trash2 />Apagar todos os dados</button><p className="version">Meu Ateliê · Desenvolvido por Pablo Almeida</p>
   </>
 }
 
