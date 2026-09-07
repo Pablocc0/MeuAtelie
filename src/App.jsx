@@ -19,7 +19,7 @@ function orderPayments(order) {
   return legacyValue > 0 ? [{ id: `legacy-${order.id}`, value: legacyValue, date: '', method: 'previous', notes: 'Pagamento registrado na versão anterior' }] : []
 }
 
-function compressPhoto(file, maxSize = 900) {
+function compressPhoto(file, maxSize = 900, format = 'image/jpeg') {
   return new Promise((resolve, reject) => {
     const image = new Image()
     const objectUrl = URL.createObjectURL(file)
@@ -30,7 +30,7 @@ function compressPhoto(file, maxSize = 900) {
       canvas.height = Math.round(image.height * scale)
       canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
       URL.revokeObjectURL(objectUrl)
-      resolve(canvas.toDataURL('image/jpeg', .78))
+      resolve(canvas.toDataURL(format, .78))
     }
     image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Imagem inválida')) }
     image.src = objectUrl
@@ -91,11 +91,19 @@ async function generateQuotePdf(quote, profile) {
   doc.setFillColor(...pink)
   doc.rect(0, 0, 210, 48, 'F')
   doc.setFillColor(255, 255, 255)
-  doc.circle(24, 24, 11, 'F')
-  doc.setTextColor(...pink)
+  if (profile.logo) {
+    const { width, height } = doc.getImageProperties(profile.logo)
+    const scale = Math.min(24 / width, 24 / height)
+    doc.roundedRect(10, 10, 28, 28, 3, 3, 'F')
+    doc.addImage(profile.logo, 24 - width * scale / 2, 24 - height * scale / 2, width * scale, height * scale)
+  } else {
+    doc.circle(24, 24, 11, 'F')
+    doc.setTextColor(...pink)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.text((profile.studio || 'M').slice(0, 1).toUpperCase(), 24, 29, { align: 'center' })
+  }
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(15)
-  doc.text((profile.studio || 'M').slice(0, 1).toUpperCase(), 24, 29, { align: 'center' })
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(18)
   doc.text(profile.studio || 'Meu Ateliê', 42, 21)
@@ -224,7 +232,7 @@ async function shareOrderCalendar(order, client, profile) {
 }
 
 const initialData = {
-  profile: { name: '', studio: 'Meu Ateliê', businessPhone: '', pixKey: '', paymentOptions: 'PIX, espécie, débito ou crédito.', cardPaymentNote: 'Cartão com acréscimo da máquina.', deliveryMessage: 'Retirada ou entrega a combinar. Em caso de entrega, temos uma taxa única de R$ 8,00 para a cidade de Caxias.', dark: false, onboarded: false },
+  profile: { name: '', studio: 'Meu Ateliê', logo: '', businessPhone: '', pixKey: '', paymentOptions: 'PIX, espécie, débito ou crédito.', cardPaymentNote: 'Cartão com acréscimo da máquina.', deliveryMessage: 'Retirada ou entrega a combinar. Em caso de entrega, temos uma taxa única de R$ 8,00 para a cidade de Caxias.', dark: false, onboarded: false },
   clients: [], orders: [], materials: [], expenses: [], catalog: [], quotes: [],
 }
 
@@ -748,6 +756,8 @@ function QuotesScreen({ data, setModal, search, setSearch, notify }) {
 function SettingsScreen({ data, setData, saveProfile, notify }) {
   const fileRef = useRef()
   const photoRef = useRef()
+  const logoRef = useRef()
+  const [savingLogo, setSavingLogo] = useState(false)
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `meu-atelie-${today()}.json`; link.click(); URL.revokeObjectURL(link.href)
@@ -765,11 +775,40 @@ function SettingsScreen({ data, setData, saveProfile, notify }) {
     } catch { notify('Não foi possível ler a foto') }
     event.target.value = ''
   }
+  const pickLogo = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      notify('Escolha uma imagem PNG, JPG ou WebP')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      notify('Escolha uma imagem de até 5 MB')
+      return
+    }
+    setSavingLogo(true)
+    try {
+      saveProfile({ logo: await compressPhoto(file, 600, 'image/png') })
+      notify('Logo do ateliê atualizada')
+    } catch { notify('Não foi possível ler a logo') }
+    finally { setSavingLogo(false) }
+  }
   const reset = () => { if (confirm('Apagar todos os dados deste aparelho? Esta ação não pode ser desfeita.')) setData({ ...initialData, profile: { ...initialData.profile, onboarded: false } }) }
   return <>
     <PageIntro eyebrow="PREFERÊNCIAS" title="Configurações" />
     <div className="settings-group"><h3>Meu perfil</h3><div className="profile-photo-setting"><button className="profile-photo" onClick={() => photoRef.current.click()}><span className="profile-photo-frame">{data.profile.photo ? <img src={data.profile.photo} alt="Foto de perfil" /> : <b>{data.profile.name?.[0]?.toUpperCase() || <UserRound />}</b>}</span><i><Camera /></i></button><div><b>{data.profile.photo ? 'Trocar foto' : 'Adicionar foto'}</b><small>Toque na imagem para escolher da galeria</small>{data.profile.photo && <button onClick={() => { saveProfile({ photo: '' }); notify('Foto removida') }}>Remover foto</button>}</div><input ref={photoRef} hidden type="file" accept="image/*" onChange={pickProfilePhoto} /></div><label><span>Seu nome</span><input value={data.profile.name} onChange={(e) => saveProfile({ name: e.target.value })} /></label><label><span>Nome do ateliê</span><input value={data.profile.studio} onChange={(e) => saveProfile({ studio: e.target.value })} /></label></div>
-    <div className="settings-group"><h3>Dados dos orçamentos</h3><label><span>WhatsApp do ateliê</span><input type="tel" value={data.profile.businessPhone || ''} onChange={(e) => saveProfile({ businessPhone: e.target.value })} placeholder="(85) 99999-9999" /></label><label><span>Chave PIX</span><input value={data.profile.pixKey || ''} onChange={(e) => saveProfile({ pixKey: e.target.value })} placeholder="CPF, telefone, e-mail ou chave aleatória" /></label><label><span>Formas de pagamento</span><input value={data.profile.paymentOptions || ''} onChange={(e) => saveProfile({ paymentOptions: e.target.value })} placeholder="PIX, espécie, débito ou crédito" /></label><label><span>Observação sobre cartão</span><input value={data.profile.cardPaymentNote || ''} onChange={(e) => saveProfile({ cardPaymentNote: e.target.value })} placeholder="Cartão com acréscimo da máquina" /></label><label><span>Retirada ou entrega</span><input value={data.profile.deliveryMessage || ''} onChange={(e) => saveProfile({ deliveryMessage: e.target.value })} placeholder="Retirada ou entrega a combinar" /></label></div>
+    <div className="settings-group"><h3>Dados dos orçamentos</h3>
+      <div className="studio-logo-setting">
+        <span>Logo do ateliê</span>
+        {data.profile.logo && <img src={data.profile.logo} alt="Logo do ateliê" />}
+        <small>Aparece no cabeçalho do PDF de orçamento. PNG, JPG ou WebP, até 5 MB.</small>
+        <div className="studio-logo-actions">
+          <button type="button" className="secondary" disabled={savingLogo} onClick={() => logoRef.current.click()}><Upload />{savingLogo ? 'Salvando...' : data.profile.logo ? 'Trocar logo' : 'Adicionar logo'}</button>
+          {data.profile.logo && <button type="button" className="secondary" disabled={savingLogo} onClick={() => { saveProfile({ logo: '' }); notify('Logo removida') }}><Trash2 />Remover logo</button>}
+        </div>
+        <input ref={logoRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={pickLogo} aria-label="Selecionar logo do ateliê" />
+      </div><label><span>WhatsApp do ateliê</span><input type="tel" value={data.profile.businessPhone || ''} onChange={(e) => saveProfile({ businessPhone: e.target.value })} placeholder="(85) 99999-9999" /></label><label><span>Chave PIX</span><input value={data.profile.pixKey || ''} onChange={(e) => saveProfile({ pixKey: e.target.value })} placeholder="CPF, telefone, e-mail ou chave aleatória" /></label><label><span>Formas de pagamento</span><input value={data.profile.paymentOptions || ''} onChange={(e) => saveProfile({ paymentOptions: e.target.value })} placeholder="PIX, espécie, débito ou crédito" /></label><label><span>Observação sobre cartão</span><input value={data.profile.cardPaymentNote || ''} onChange={(e) => saveProfile({ cardPaymentNote: e.target.value })} placeholder="Cartão com acréscimo da máquina" /></label><label><span>Retirada ou entrega</span><input value={data.profile.deliveryMessage || ''} onChange={(e) => saveProfile({ deliveryMessage: e.target.value })} placeholder="Retirada ou entrega a combinar" /></label></div>
     <div className="settings-group"><h3>Aparência</h3><button className="settings-row" onClick={() => saveProfile({ dark: !data.profile.dark })}>{data.profile.dark ? <Moon /> : <Sun />}<span><b>Modo escuro</b><small>Mais confortável à noite</small></span><i className={data.profile.dark ? 'toggle on' : 'toggle'} /></button></div>
     <div className="settings-group"><h3>Instalar no iPhone</h3><div className="install-note"><Share2 /><p>No Safari, toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p></div></div>
     <div className="settings-group"><h3>Backup local</h3><button className="settings-row" onClick={exportData}><Download /><span><b>Exportar dados</b><small>Salvar uma cópia em JSON</small></span><ChevronRight /></button><button className="settings-row" onClick={() => fileRef.current.click()}><Upload /><span><b>Restaurar backup</b><small>Importar uma cópia anterior</small></span><ChevronRight /></button><input ref={fileRef} hidden type="file" accept="application/json" onChange={importData} /></div>
