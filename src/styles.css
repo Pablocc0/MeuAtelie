@@ -536,5 +536,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .studio-logo-setting > span { font-size: 13px; font-weight: 800; }
 .studio-logo-setting > img { width: 160px; height: 100px; object-fit: contain; padding: 8px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
 .studio-logo-setting > small { color: var(--muted); font-size: 11px; }
-.studio-logo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.studio-logo-actions > button { width: auto; margin: 0; }
+.studio-logo-actions { width: 100%; }
+.studio-logo-actions > .settings-row:disabled { opacity: .5; cursor: wait; }
+.studio-logo-actions > .studio-logo-remove, .studio-logo-remove > svg { color: #c54850; }
